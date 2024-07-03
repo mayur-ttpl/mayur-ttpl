@@ -1,0 +1,41 @@
+#!/bin/bash
+
+
+
+set -e
+
+
+
+REGION=us-east-1
+
+
+
+ACCOUNT_ID=123456789
+
+
+
+IMAGE_TAG=`cat /tmp/image_tag.txt`
+
+
+
+
+
+
+
+#Login to ECR
+
+
+
+aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
+
+
+
+
+
+
+
+#Run docker container 
+
+
+
+sudo docker run -itd -p 8080:8008 --name=container-name-here 123456789.dkr.ecr.us-east-1.amazonaws.com/docker-repo-name-here:${IMAGE_TAG}

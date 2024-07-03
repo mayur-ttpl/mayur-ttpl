@@ -1,0 +1,53 @@
+version: 0.0
+
+
+
+os: linux
+
+
+
+files:
+
+
+
+  - source: image_tag.txt
+
+
+
+    destination: /tmp/
+
+
+
+hooks:
+
+
+
+  BeforeInstall:
+
+
+
+    - location: deployment-scripts/BeforeInstall.sh
+
+
+
+      timeout: 300
+
+
+
+      runas: root
+
+
+
+  AfterInstall:
+
+
+
+    - location: deployment-scripts/AfterInstall.sh
+
+
+
+      timeout: 300
+
+
+
+      runas: root
