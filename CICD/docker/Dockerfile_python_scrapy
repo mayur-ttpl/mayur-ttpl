@@ -1,0 +1,43 @@
+#this is the custom image build 
+FROM chrome-driver:latest 
+
+#means Python will not try to write .pyc files
+ENV PYTHONDONTWRITEBYTECODE 1
+
+#ensures our console output is not buffered by Docker
+ENV PYTHONUNBUFFERED 1
+
+#setup working directory and install required packages
+WORKDIR /app
+RUN apt update
+#RUN apt-get install nginx -y
+RUN apt-get install net-tools -y
+RUN apt-get install curl -y
+RUN apt-get install -y supervisor
+RUN apt-get -y install vim
+RUN apt-get -y install procps
+
+# Install dependencies:
+COPY requirements.txt .
+RUN pip install --upgrade pip setuptools
+RUN pip install Cmake
+
+#dependance with enviroment active
+RUN pip install -r requirements.txt
+
+# copy project at working directory
+COPY . .
+
+#configure supervisor
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+#nginx setup
+#COPY nginx.conf /etc/nginx/conf.d/
+#RUN rm -rf /etc/nginx/sites-available/*
+#RUN rm -rf /etc/nginx/sites-enabled/*
+
+# Expose port
+EXPOSE 8000
+
+# Start services using supervisor
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

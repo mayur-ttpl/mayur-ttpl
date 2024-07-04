@@ -1,0 +1,52 @@
+#base image
+FROM  python:3.8-slim-bullseye
+
+#means Python will not try to write .pyc files
+ENV PYTHONDONTWRITEBYTECODE 1
+
+#ensures our console output is not buffered by Docker
+ENV PYTHONUNBUFFERED 1
+
+#setup working directory and install required packages
+WORKDIR /app
+RUN apt update
+RUN apt-get install nginx -y
+RUN apt-get install net-tools -y
+RUN apt-get install curl -y
+RUN apt-get install -y supervisor
+RUN apt-get -y install cron vim
+
+#for mysqlclient
+RUN apt-get install python3-dev default-libmysqlclient-dev build-essential -y
+
+#for psql client
+RUN apt-get install libpq-dev python-dev -y
+
+# Create a virtualenv in same directory of code dir
+RUN python -m venv venv
+
+# Install dependencies:
+COPY requirements.txt .
+RUN venv/bin/pip install --upgrade pip setuptools
+RUN venv/bin/pip install Cmake
+
+#configure supervisor
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+#dependance with enviroment active
+RUN venv/bin/pip install -r requirements.txt
+
+# copy project at working directory
+COPY . .
+RUN venv/bin/python manage.py crontab add
+
+#nginx setup
+COPY nginx.conf /etc/nginx/conf.d/
+RUN rm -rf /etc/nginx/sites-available/*
+RUN rm -rf /etc/nginx/sites-enabled/*
+
+# Expose port
+EXPOSE 80
+
+# Start services using supervisor
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
