@@ -1,0 +1,90 @@
+name: Build, Push Docker Image with Commit ID and Update Kubernetes Manifests for dev enviroment
+
+on:
+  push:
+    branches:
+      - dev  # Trigger when code is pushed to the dev branch
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: intuitivementalhealth/imh-backend-portal-dev
+  COMMIT_SHA: ${{ github.sha }}
+  K8S_PATH: k8s/dev
+  VITE_API_URL: 'https://dev-api.xyz.care/api'
+
+# There is a single job in this workflow. It's configured to run on the latest available version of Ubuntu.
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
+    permissions:
+      contents: write  # allow git push from pipeline 
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests with coverage
+        run: npm run test:cov
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+      - name: List coverage files
+        run: |
+          echo "Checking for coverage/lcov.info"
+          ls -lrth coverage || echo "⚠️ coverage directory not found"
+          ls -lrth coverage/lcov.info || echo "❌ coverage/lcov.info not found"          
+      - name: Get project name
+        id: project_name
+        run: echo "name=$(basename "$PWD")" >> $GITHUB_OUTPUT          
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ steps.project_name.outputs.name }}-${{ github.ref_name }}
+            -Dsonar.sources=. 
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,Dockerfile
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/*.spec.ts
+            -Dsonar.coverage.exclusions=**/*.spec.ts
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+      # Uses the `docker/login-action` action to log in to the Container registry registry using the account and password that will publish the packages. Once published, the packages are scoped to the account defined here.
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest .
+          echo "Tag Image with commit ID"
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.COMMIT_SHA }}
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.COMMIT_SHA }}
+
+      - name: Update Kubernetes deployment manifest with the new image tag
+        run: |
+          # Update the image tag in the Kubernetes manifest with the commit SHA
+          sed -i 's|image: ghcr.io/intuitivementalhealth/imh-backend-portal-dev:.*|image: ghcr.io/intuitivementalhealth/imh-backend-portal-dev:${{ env.COMMIT_SHA }}|' k8s/dev/deployment.yaml
+          
+          # Commit the changes to the Git repository (same repository as the pipeline)
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git add k8s/dev/deployment.yaml
+          git commit -m "Update image to commit ${{ github.sha }} for dev environment"
+          git push
