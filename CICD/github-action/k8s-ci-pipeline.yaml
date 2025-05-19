@@ -88,3 +88,4 @@ jobs:
           git add k8s/dev/deployment.yaml
           git commit -m "Update image to commit ${{ github.sha }} for dev environment"
           git push
+          #update for readme
